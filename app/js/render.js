@@ -5,6 +5,7 @@
 //   image: { t: "image", id, x, y, w, h, img }   (img = image id in the store)
 
 import { drawInk } from "./ink-core.js";
+import { drawShape, shapeBounds, shapeHits } from "./shapes.js";
 
 export const NOTE_COLORS = {
   yellow: "#fff3a6", green: "#c9f0b4", pink: "#ffc9e1", blue: "#bfe3ff", purple: "#dccbff", orange: "#ffd5a8", gray: "#e6e6e6",
@@ -53,6 +54,11 @@ export const textHeight = it => layoutOf(it).h;
 // ---------- bounds and hit tests ----------
 const boundsCache = new WeakMap();
 export function bounds(it) {
+  if (it.t === "shape") {
+    let b = boundsCache.get(it);
+    if (!b) { b = shapeBounds(it); boundsCache.set(it, b); }
+    return b;
+  }
   if (it.t !== "ink") {
     const h = it.t === "text" ? Math.max(it.fs * LINE, textHeight(it)) : it.h;
     return { x0: it.x, y0: it.y, x1: it.x + it.w, y1: it.y + h };
@@ -80,6 +86,7 @@ function distToSeg(px, py, a, b) {
 export function hits(it, x, y, slop) {
   const b = bounds(it);
   if (x < b.x0 - slop || x > b.x1 + slop || y < b.y0 - slop || y > b.y1 + slop) return false;
+  if (it.t === "shape") return shapeHits(it, x, y, slop);
   if (it.t !== "ink") return true;
   const P = it.pts, r = it.w / 2 + slop;
   if (P.length === 1) return Math.hypot(x - P[0][0], y - P[0][1]) <= r;
@@ -93,23 +100,60 @@ export function drawBackground(ctx, { bg, pattern }, view, width, height) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = bg || "#ffffff"; ctx.fillRect(0, 0, width, height);
   if (!pattern || pattern === "none") return;
-  const k = view.z * view.dpr;
-  let step = 40; while (step * k < 18) step *= 2; while (step * k > 80) step /= 2;
-  const dark = luminance(bg || "#ffffff") < 0.45;
-  ctx.fillStyle = ctx.strokeStyle = dark ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.13)";
-  const sx = (-view.x % step) * k, sy = (-view.y % step) * k, s = step * k;
-  const x0 = sx < 0 ? sx + s : sx, y0 = sy < 0 ? sy + s : sy;
-  if (pattern === "dots") {
-    const r = Math.max(1, 1.2 * view.dpr);
-    for (let x = x0 - s; x < width + s; x += s) for (let y = y0 - s; y < height + s; y += s) ctx.fillRect(x - r / 2, y - r / 2, r, r);
-  } else {
-    ctx.lineWidth = Math.max(1, view.dpr * 0.75);
+  const k = view.z * view.dpr, dark = luminance(bg || "#ffffff") < 0.45;
+  const ink = a => (dark ? `rgba(255,255,255,${a * 1.2})` : `rgba(0,0,0,${a})`);
+  // screen positions of every board line at `step`, covering the canvas
+  const lines = (step, horizontal) => {
+    const v0 = horizontal ? view.y : view.x, size = horizontal ? height : width, out = [];
+    for (let i = Math.floor(v0 / step); (i * step - v0) * k <= size + 1; i++) out.push([i, Math.round((i * step - v0) * k) + 0.5]);
+    return out;
+  };
+  if (pattern === "dots" || pattern === "grid") {
+    let step = 40; while (step * k < 18) step *= 2; while (step * k > 80) step /= 2;
+    ctx.fillStyle = ctx.strokeStyle = ink(0.13);
+    const xs = lines(step, false), ys = lines(step, true);
+    if (pattern === "dots") {
+      const r = Math.max(1, 1.2 * view.dpr);
+      for (const [, x] of xs) for (const [, y] of ys) ctx.fillRect(x - r / 2, y - r / 2, r, r);
+    } else {
+      ctx.lineWidth = Math.max(1, view.dpr * 0.75);
+      ctx.beginPath();
+      for (const [, x] of xs) { ctx.moveTo(x, 0); ctx.lineTo(x, height); }
+      for (const [, y] of ys) { ctx.moveTo(0, y); ctx.lineTo(width, y); }
+      ctx.stroke();
+    }
+    return;
+  }
+  // Graph paper: small squares with a darker line every 5. "axes" adds numbered x/y axes.
+  // One square is GRAPH units at 100%; squares merge 5 at a time when zoomed far out.
+  let minor = GRAPH; while (minor * k < 9) minor *= 5;
+  const major = minor * 5, xs = lines(minor, false), ys = lines(minor, true);
+  ctx.lineWidth = Math.max(1, view.dpr * 0.6);
+  for (const pass of [0, 1]) {
+    ctx.strokeStyle = pass ? ink(0.26) : ink(0.09);
     ctx.beginPath();
-    for (let x = x0 - s; x < width + s; x += s) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, height); }
-    for (let y = y0 - s; y < height + s; y += s) { ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(width, Math.round(y) + 0.5); }
+    for (const [i, x] of xs) if ((i % 5 === 0) === !!pass) { ctx.moveTo(x, 0); ctx.lineTo(x, height); }
+    for (const [i, y] of ys) if ((i % 5 === 0) === !!pass) { ctx.moveTo(0, y); ctx.lineTo(width, y); }
     ctx.stroke();
   }
+  if (pattern !== "axes") return;
+  const ox = Math.round(-view.x * k) + 0.5, oy = Math.round(-view.y * k) + 0.5;
+  ctx.strokeStyle = ink(0.7); ctx.lineWidth = Math.max(1.5, view.dpr * 1.5);
+  ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, height); ctx.moveTo(0, oy); ctx.lineTo(width, oy); ctx.stroke();
+  // numbers on every major line, pinned to the screen edge when the axis is off screen
+  const fs = 11 * view.dpr, pad = 3 * view.dpr;
+  ctx.font = `${fs}px ${FONT}`; ctx.fillStyle = ink(0.75);
+  const lx = Math.min(Math.max(ox, pad), width - 4 * fs), ly = Math.min(Math.max(oy, pad), height - fs - pad);
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  for (const [i, x] of lines(major, false)) if (i) ctx.fillText(fmtNum(i * major / GRAPH), x, ly + pad);
+  ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  for (const [i, y] of lines(major, true)) if (i) ctx.fillText(fmtNum(-i * major / GRAPH), lx - pad, y);
+  ctx.textAlign = "right"; ctx.textBaseline = "top";
+  ctx.fillText("0", ox - pad, oy + pad);
+  ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
 }
+export const GRAPH = 24;   // board units per graph-paper square at 100% zoom
+const fmtNum = v => (Math.abs(v) >= 1e4 ? v.toExponential(0) : String(+v.toFixed(2)));
 export function luminance(hex) {
   const n = parseInt((hex || "#ffffff").slice(1), 16);
   return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
@@ -123,6 +167,7 @@ function roundRect(ctx, x, y, w, h, r) {
 // Context in board units. `opts`: { minW, images: Map, editing: id, z }
 export function drawItem(ctx, it, opts) {
   if (it.t === "ink") { drawInk(ctx, it, opts.minW); return; }
+  if (it.t === "shape") { drawShape(ctx, it, opts.minW); return; }
   if (it.t === "note") {
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.18)"; ctx.shadowBlur = 10 * (opts.z || 1) * (opts.dpr || 1); ctx.shadowOffsetY = 3 * (opts.z || 1) * (opts.dpr || 1);

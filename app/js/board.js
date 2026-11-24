@@ -8,6 +8,8 @@
 
 import { JOIN, PALM_MS, IS_ANDROID, gammaOf, smoothPx, smoothStroke, drawLiveSeg, drawTail, drawInk } from "./ink-core.js";
 import { bounds, unionBounds, hits, drawItem, drawBackground, textHeight, NOTE_COLORS } from "./render.js";
+import { shapeFromDrag, recognize, transformShape, shapeSamples, inPoly } from "./shapes.js";
+import { Guides, snapAngle } from "./guides.js";
 
 export const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const ZMIN = 0.05, ZMAX = 10;
@@ -19,7 +21,8 @@ export function cloneItem(it) {
   if (it.pts) c.pts = it.pts.map(q => q.slice());
   return c;
 }
-function transformItem(it, f) {   // f(x, y) -> [x, y]; k = size factor
+export function transformItem(it, f) {   // f(x, y) -> [x, y]; k = size factor
+  if (it.t === "shape") return transformShape(it, f);
   const c = cloneItem(it), k = f.k || 1;
   if (it.t === "ink") { c.pts = it.pts.map(q => { const [x, y] = f(q[0], q[1]); return [+x.toFixed(2), +y.toFixed(2), q[2], q[3]]; }); c.w = +(it.w * k).toFixed(3); }
   else {
@@ -29,17 +32,11 @@ function transformItem(it, f) {   // f(x, y) -> [x, y]; k = size factor
   }
   return c;
 }
-function inPoly(x, y, P) {
-  let inside = false;
-  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
-    if ((P[i][1] > y) !== (P[j][1] > y) && x < ((P[j][0] - P[i][0]) * (y - P[i][1])) / (P[j][1] - P[i][1]) + P[i][0]) inside = !inside;
-  }
-  return inside;
-}
 
 export class BoardView {
-  constructor({ canvas, editor, settings, images, loadImage, onChange, onSelection, onView, onToolDone }) {
-    Object.assign(this, { canvas, editor, settings, images, loadImage, onChange, onSelection, onView, onToolDone });
+  constructor({ canvas, editor, settings, images, loadImage, onChange, onSelection, onView, onToolDone, onApplied, onEditText, onPointer, onInk, onComment, drawOverlay }) {
+    Object.assign(this, { canvas, editor, settings, images, loadImage, onChange, onSelection, onView, onToolDone, onApplied, onEditText, onPointer, onInk, onComment, drawOverlay });
+    this.guides = new Guides();
     this.ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
     this.board = null; this.view = { x: 0, y: 0, z: 1 }; this.dpr = 1; this.cssW = 1; this.cssH = 1;
     this.sel = new Set(); this.undoStack = []; this.redoStack = [];
@@ -52,6 +49,7 @@ export class BoardView {
     canvas.addEventListener("pointercancel", e => this.up(e, true));
     canvas.addEventListener("lostpointercapture", e => { if (this.g && this.g.id === e.pointerId) this.up(e, true); });
     canvas.addEventListener("contextmenu", e => e.preventDefault());
+    canvas.addEventListener("pointerleave", e => { if (this.onPointer && e.pointerType !== "touch" && !this.g) this.onPointer(null); });
     canvas.addEventListener("wheel", e => this.wheel(e), { passive: false });
     canvas.addEventListener("dblclick", e => {
       const [x, y] = this.toBoard(e.clientX, e.clientY), it = this.hitTop(x, y);
@@ -78,6 +76,7 @@ export class BoardView {
     this.dpr = window.devicePixelRatio || 1; this.cssW = Math.max(1, r.width); this.cssH = Math.max(1, r.height);
     const w = Math.round(this.cssW * this.dpr), h = Math.round(this.cssH * this.dpr);
     if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; }
+    this.guides.size = { w: this.cssW, h: this.cssH };
     if (this.pendingFit && r.width > 1 && r.height > 1) { this.pendingFit = false; this.fit(); }
     this.render(); this.placeEditor();
   }
@@ -138,6 +137,8 @@ export class BoardView {
       } else drawItem(ctx, it, opts);
     }
     if (g && g.kind === "ink" && g.stroke) drawInk(ctx, g.stroke, opts.minW);
+    if (g && g.kind === "shape" && g.preview) drawItem(ctx, g.preview, opts);
+    if (this.drawOverlay) { ctx.save(); this.drawOverlay(ctx, opts); ctx.restore(); }
     this.drawSelection();
     if (g && g.kind === "lasso" && g.pts.length > 1) {
       ctx.save();
@@ -146,6 +147,7 @@ export class BoardView {
       ctx.beginPath(); g.pts.forEach((p, i) => (i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))); ctx.closePath();
       ctx.fill(); ctx.stroke(); ctx.restore();
     }
+    this.guides.draw(ctx, this.dpr, view.z, g && g.kind === "ink" && g.snapInfo);
   }
   selBounds() {
     if (!this.sel.size || !this.board) return null;
@@ -171,14 +173,21 @@ export class BoardView {
   // ---------- history ----------
   // A change is { before, after } (items or null). apply() edits board.items; undo applies the
   // reverse changes in reverse order.
-  apply(changes) {
-    const items = this.board.items;
+  // remote: changes that came from another device in a live session (not stamped or re-sent).
+  apply(changes, { remote = false } = {}) {
+    const items = this.board.items, now = Date.now();
+    if (!remote) for (const c of changes) {
+      // Edit times per item let OneDrive sync merge two devices' edits item by item.
+      if (c.after) c.after.u = now;
+      else if (c.before) (this.board.gone || (this.board.gone = {}))[c.before.id] = now;
+    }
     for (const c of changes) {
       const id = (c.before || c.after).id;
       if (c.before && c.after) { const i = items.findIndex(x => x.id === id); if (i >= 0) items[i] = c.after; }
       else if (c.after) items.splice(c.index != null ? Math.min(c.index, items.length) : items.length, 0, c.after);
       else { const i = items.findIndex(x => x.id === id); if (i >= 0) { c.index = i; items.splice(i, 1); } }
     }
+    if (!remote && this.onApplied) this.onApplied(changes);
   }
   commit(changes, { applied = false } = {}) {
     if (!changes.length) return;
@@ -206,6 +215,13 @@ export class BoardView {
     const ch = this.redoStack.pop();
     this.apply(ch); this.undoStack.push(ch); this.changed();
     return true;
+  }
+  // The board's items were replaced from outside (OneDrive sync brought another device's edits).
+  changedOutside() {
+    for (const it of this.board.items) if (it.t === "image") this.ensureImage(it.img);
+    for (const id of [...this.sel]) if (!this.board.items.some(i => i.id === id)) this.sel.delete(id);
+    this.lastEnd = null;
+    this.emitSel(); this.requestRender();
   }
   get canUndo() { return this.undoStack.length > 0; }
   get canRedo() { return this.redoStack.length > 0; }
@@ -282,6 +298,7 @@ export class BoardView {
     const it = this.editingItem(); if (!it) return;
     it.text = this.editor.value;
     this.placeEditor(); this.requestRender();
+    if (this.onEditText) this.onEditText(it);
   }
   endEdit() {
     const e = this.editing; if (!e) return;
@@ -316,10 +333,16 @@ export class BoardView {
       // A palm or finger gesture that started just before the pen: drop it.
       if (this.g && this.g.type !== "pen") this.cancelGesture();
     }
+    const r = this.canvas.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
     if (t === "touch") {
       if (this.g && this.g.type === "pen") return;                       // palms never act while the pen writes
       if (e.timeStamp - this.lastPenAt < PALM_MS) { e.preventDefault(); return; }
       this.touches.set(e.pointerId, [e.clientX, e.clientY]);
+      if (this.g && this.g.kind === "guide") {   // a second finger on the ruler: rotate it
+        this.g.ptrs.set(e.pointerId, [sx, sy]); this.g.base = this.guideBase();
+        try { this.canvas.setPointerCapture(e.pointerId); } catch (_) {}
+        return;
+      }
       if (this.touches.size >= 2) { this.startPinch(); return; }
     }
     if (this.g) return;   // one pointer owns the board at a time
@@ -328,6 +351,13 @@ export class BoardView {
     try { this.canvas.setPointerCapture(e.pointerId); } catch (_) {}
     const [x, y] = this.toBoard(e.clientX, e.clientY);
     const base = { id: e.pointerId, type: t, sx: e.clientX, sy: e.clientY, x, y, t0: e.timeStamp };
+    // Fingers and the mouse move the ruler/protractor; the pen draws along them.
+    const onGuide = t !== "pen" && !isEraseButton(e) && this.guides.hit(sx, sy);
+    if (onGuide && !(t === "mouse" && e.button !== 0)) {
+      this.g = { ...base, kind: "guide", which: onGuide, ptrs: new Map([[e.pointerId, [sx, sy]]]) };
+      this.g.base = this.guideBase();
+      return;
+    }
     let tool = set.tool;
     if (t === "mouse" && (e.button === 1 || e.button === 2 || this.space)) tool = "hand";
     else if (t === "touch" && !set.touchInk && INK_TOOLS.has(tool)) tool = "hand";
@@ -336,7 +366,8 @@ export class BoardView {
     if (tool === "hand") { this.g = { ...base, kind: "pan", v0: { ...this.view } }; return; }
     if (tool === "eraser") { this.g = { ...base, kind: "erase", removed: [], last: [x, y] }; this.eraseAt(x, y, x, y); return; }
     if (tool === "pen" || tool === "highlighter") { this.startInk(e, base, x, y, tool); return; }
-    if (tool === "note" || tool === "text") { this.g = { ...base, kind: "place", tool }; return; }
+    if (tool === "note" || tool === "text" || tool === "comment") { this.g = { ...base, kind: "place", tool }; return; }
+    if (tool === "shape") { this.g = { ...base, kind: "shape", preview: null }; return; }
     // select
     const sb = this.selBounds(), z = this.view.z;
     if (sb && Math.hypot(x - (sb.x1 + 6 / z), y - (sb.y1 + 6 / z)) < (t === "touch" ? 22 : 14) / z) {
@@ -362,6 +393,12 @@ export class BoardView {
       if (this.g && this.g.kind === "pinch") { this.pinchMove(); return; }
     }
     const g = this.g;
+    if (g && g.kind === "guide" && g.ptrs.has(e.pointerId)) {
+      const r = this.canvas.getBoundingClientRect();
+      g.ptrs.set(e.pointerId, [e.clientX - r.left, e.clientY - r.top]);
+      this.guideMove(); return;
+    }
+    if (this.onPointer && e.pointerType !== "touch") this.onPointer(this.toBoard(e.clientX, e.clientY));
     if (!g) {
       // Pen hovering just after a light lift: keep the path for rejoining.
       if (this.lastEnd && e.pointerType === "pen" && !e.buttons) {
@@ -379,13 +416,20 @@ export class BoardView {
       let evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
       if (!evs.length) evs = [e];
       for (const ev of evs) {
-        const [x, y] = this.toBoard(ev.clientX, ev.clientY);
+        const [x, y] = g.snap ? this.snapped(g, ev) : this.toBoard(ev.clientX, ev.clientY);
         if (g.kind === "ink") this.addPoint(x, y, this.pressureOf(ev), ev.timeStamp);
         else if (g.kind === "erase") { this.eraseAt(g.last[0], g.last[1], x, y); g.last = [x, y]; }
         else { const l = g.pts[g.pts.length - 1]; if (Math.hypot(x - l[0], y - l[1]) * z > 3) g.pts.push([x, y]); }
       }
-      if (g.kind === "lasso") this.requestRender();
+      if (g.kind === "lasso" || (g.kind === "ink" && g.snapInfo)) this.requestRender();
       return;
+    }
+    if (g.kind === "shape") {
+      const [x, y] = this.toBoard(e.clientX, e.clientY);
+      if (Math.hypot(e.clientX - g.sx, e.clientY - g.sy) < 3) return;
+      const sh = this.settings().shape;
+      g.preview = shapeFromDrag(sh.k, g.x, g.y, x, y, e.shiftKey, this.shapeStyle());
+      this.requestRender(); return;
     }
     if (g.kind === "pan") {
       this.setView(g.v0.x - (e.clientX - g.sx) / g.v0.z, g.v0.y - (e.clientY - g.sy) / g.v0.z, g.v0.z);
@@ -408,11 +452,16 @@ export class BoardView {
     }
     if (e.pointerType === "pen") this.lastPenAt = e.timeStamp;
     const g = this.g;
+    if (g && g.kind === "guide" && g.ptrs.has(e.pointerId)) {
+      g.ptrs.delete(e.pointerId);
+      if (!g.ptrs.size) this.g = null; else g.base = this.guideBase();
+      this.requestRender(); return;
+    }
     if (!g || e.pointerId !== g.id) return;
     this.g = null;
-    if (cancelled && g.kind === "ink") { this.requestRender(); return; }
+    if (cancelled && g.kind === "ink") { if (this.onInk) this.onInk(null); this.requestRender(); return; }
     const [x, y] = this.toBoard(e.clientX, e.clientY);
-    if (g.kind === "ink") this.finishInk(e, g);
+    if (g.kind === "ink") { this.finishInk(e, g); if (this.onInk) this.onInk(null); }   // after the commit, so others never see a gap
     else if (g.kind === "erase") { if (g.removed.length) this.commit(g.removed, { applied: true }); }
     else if (g.kind === "lasso") this.finishLasso(g);
     else if (g.kind === "move") {
@@ -428,6 +477,12 @@ export class BoardView {
         this.commit(this.selected().map(it => ({ before: it, after: transformItem(it, f) })));
       }
       this.requestRender();
+    } else if (g.kind === "shape") {
+      if (g.preview && !cancelled) {
+        const b = bounds(g.preview);
+        if ((b.x1 - b.x0) * this.view.z > 6 || (b.y1 - b.y0) * this.view.z > 6) this.commit([{ before: null, after: { ...g.preview, id: uid() } }]);
+      }
+      this.requestRender();
     } else if (g.kind === "place" && !cancelled && Math.hypot(e.clientX - g.sx, e.clientY - g.sy) < 12) {
       this.placeItem(g.tool, x, y);
     }
@@ -436,6 +491,7 @@ export class BoardView {
   cancelGesture() {
     const g = this.g; if (!g) return;
     this.g = null;
+    if (g.kind === "ink" && this.onInk) this.onInk(null);
     if (g.kind === "erase" && g.removed.length) this.commit(g.removed, { applied: true });
     try { this.canvas.releasePointerCapture(g.id); } catch (_) {}
     this.requestRender();
@@ -460,6 +516,8 @@ export class BoardView {
   wheel(e) {
     e.preventDefault();
     const r = this.canvas.getBoundingClientRect();
+    const onGuide = !e.ctrlKey && this.guides.hit(e.clientX - r.left, e.clientY - r.top);
+    if (onGuide) { this.guides.rotate(onGuide, Math.sign(e.deltaY) * (e.shiftKey ? 15 : 1) * Math.PI / 180); this.requestRender(); return; }
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.cssH : 1;
     if (e.ctrlKey || e.metaKey) this.zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * unit * 0.0025));
     else {
@@ -484,6 +542,17 @@ export class BoardView {
       t: "ink", id: uid(), b: tool === "highlighter" ? "highlighter" : pen.brush || "pen", c: pen.color, a: 1,
       w: +pen.size.toFixed(3), g: +gammaOf(set.curve).toFixed(3), pts: [[x, y, p, 0]],
     };
+    // On or next to the ruler/protractor: the stroke follows its edge.
+    if (this.guides.any) {
+      const r = this.canvas.getBoundingClientRect();
+      const snap = this.guides.snapFor(e.clientX - r.left, e.clientY - r.top, pen.size * this.view.z / 2);
+      if (snap) {
+        this.g.snap = snap;
+        if (snap.kind === "arc") this.g.snapInfo = { kind: "arc", guide: snap.guide, startAng: snap.startAng, now: snap.startAng };
+        const [sx, sy] = this.snapped(this.g, e);
+        this.g.stroke.pts[0][0] = sx; this.g.stroke.pts[0][1] = sy;
+      }
+    }
     if (this.g.stroke.b === "highlighter") this.requestRender();
   }
   addPoint(x, y, p, ts) {
@@ -492,6 +561,7 @@ export class BoardView {
     const P = s.pts, q = P[P.length - 1], z = this.view.z;
     if (((x - q[0]) ** 2 + (y - q[1]) ** 2) * z * z < 0.25) return;
     P.push([x, y, this.pEma, Math.round(ts - this.t0)]);
+    if (this.onInk) this.onInk(s);
     if (s.b === "highlighter") { this.requestRender(); return; }
     this.g.arc = (this.g.arc || 0) + Math.hypot(x - q[0], y - q[1]);
     if (this.queued) return;   // a full redraw is coming and will include this point
@@ -508,10 +578,13 @@ export class BoardView {
     for (let i = R.length - 1; i >= 0 && R[i][3] >= tEnd - JOIN.LIGHT_WINDOW_MS; i--) endP = Math.max(endP, R[i][2]);
     for (let i = 1; i < R.length; i++) lenPx += Math.hypot(R[i][0] - R[i - 1][0], R[i][1] - R[i - 1][1]);
     lenPx *= z;
-    if (set.smooth > 0 && a.b !== "highlighter") a.pts = smoothStroke(a.pts, smoothPx(set.smooth) / z);
+    if (set.smooth > 0 && a.b !== "highlighter" && !g.snap) a.pts = smoothStroke(a.pts, smoothPx(set.smooth) / z);
     a.pts = a.pts.map(q => [+q[0].toFixed(2), +q[1].toFixed(2), +q[2].toFixed(3), q[3]]);
+    // Ink to shape: a stroke that looks like a shape becomes one.
+    const shape = set.inkToShape && !g.snap && a.b === "pen" && !g.resumed ? recognize(a, 24 / z) : null;
+    if (shape) { shape.id = a.id; this.commit([{ before: null, after: shape }]); this.lastEnd = null; this.hoverTrail = []; return; }
     this.commit([{ before: null, after: a }]);
-    const isLine = lenPx >= JOIN.MIN_LEN_PX && tEnd >= JOIN.MIN_MS;
+    const isLine = !g.snap && lenPx >= JOIN.MIN_LEN_PX && tEnd >= JOIN.MIN_MS;
     this.lastEnd = !IS_ANDROID && isLine && e.pointerType === "pen" && a.b !== "highlighter" && endP <= JOIN.LIGHT_P
       ? { s: a, t: e.timeStamp, t0: this.t0 } : null;
     this.hoverTrail = [];
@@ -540,7 +613,7 @@ export class BoardView {
     items.pop();
     const top = this.undoStack[this.undoStack.length - 1];
     if (top && top.length === 1 && top[0].after === L.s) this.undoStack.pop();
-    this.g.stroke = L.s; this.t0 = L.t0; this.pEma = p;
+    this.g.stroke = L.s; this.g.resumed = true; this.t0 = L.t0; this.pEma = p;
     this.render();
     for (const [hx, hy, ht] of this.hoverTrail) this.addPoint(hx, hy, 0, ht);
     this.addPoint(x, y, p, e.timeStamp);
@@ -554,7 +627,7 @@ export class BoardView {
     const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / (r * 0.7)));
     const found = [];
     for (let i = items.length - 1; i >= 0; i--) {
-      const it = items[i]; if (it.t !== "ink") continue;
+      const it = items[i]; if (it.t !== "ink" && it.t !== "shape") continue;
       for (let k = 0; k <= steps; k++) {
         const x = x0 + (x1 - x0) * k / steps, y = y0 + (y1 - y0) * k / steps;
         if (hits(it, x, y, r)) { found.push(it); break; }
@@ -577,13 +650,46 @@ export class BoardView {
         for (let i = 0; i < it.pts.length; i += step) { n++; if (inPoly(it.pts[i][0], it.pts[i][1], P)) inside++; }
         return inside / n >= 0.5;
       }
+      if (it.t === "shape") { const S = shapeSamples(it); return S.filter(q => inPoly(q[0], q[1], P)).length / S.length >= 0.5; }
       const b = bounds(it);
       return inPoly((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, P);
     }).map(i => i.id);
     this.select(g.add ? [...this.sel, ...picked] : picked);
   }
 
+  shapeStyle() {
+    const sh = this.settings().shape;
+    return { c: sh.color, w: sh.size, f: sh.fill ? sh.color + "33" : null };
+  }
+  // Pointer event -> board point, pulled onto the guide edge this stroke follows.
+  snapped(g, ev) {
+    const r = this.canvas.getBoundingClientRect(), sx = ev.clientX - r.left, sy = ev.clientY - r.top;
+    const [px, py] = g.snap.snap(sx, sy);
+    if (g.snapInfo && g.snap.readout) g.snapInfo.now = g.snap.readout(sx, sy);
+    return [px / this.view.z + this.view.x, py / this.view.z + this.view.y];
+  }
+  guideBase() {
+    const g = this.g, gd = this.guides[g.which], P = [...g.ptrs.values()];
+    return { gx: gd.x, gy: gd.y, ga: gd.a, P: P.map(q => q.slice()) };
+  }
+  guideMove() {
+    const g = this.g, gd = this.guides[g.which], b = g.base, P = [...g.ptrs.values()];
+    if (P.length === 1 || b.P.length === 1) {
+      gd.x = b.gx + P[0][0] - b.P[0][0]; gd.y = b.gy + P[0][1] - b.P[0][1];
+    } else {
+      const m0 = [(b.P[0][0] + b.P[1][0]) / 2, (b.P[0][1] + b.P[1][1]) / 2], m1 = [(P[0][0] + P[1][0]) / 2, (P[0][1] + P[1][1]) / 2];
+      const da = Math.atan2(P[1][1] - P[0][1], P[1][0] - P[0][0]) - Math.atan2(b.P[1][1] - b.P[0][1], b.P[1][0] - b.P[0][0]);
+      // turn the guide around the starting midpoint, then follow the midpoint
+      const c = Math.cos(da), s = Math.sin(da), dx = b.gx - m0[0], dy = b.gy - m0[1];
+      gd.x = m1[0] + dx * c - dy * s; gd.y = m1[1] + dx * s + dy * c;
+      gd.a = snapAngle(b.ga + da);
+    }
+    this.requestRender();
+  }
+  toggleGuide(kind) { const on = this.guides.toggle(kind); this.requestRender(); return on; }
+
   placeItem(tool, x, y) {
+    if (tool === "comment") { if (this.onToolDone) this.onToolDone(); if (this.onComment) this.onComment(x, y); return; }
     const set = this.settings();
     let it;
     if (tool === "note") it = { t: "note", id: uid(), x: x - 110, y: y - 110, w: 220, h: 220, color: set.noteColor in NOTE_COLORS ? set.noteColor : "yellow", text: "", fs: 22 };

@@ -21,6 +21,11 @@
     <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
     <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="9.5" r="1.8" fill="currentColor"/><path d="M3.5 18l5.5-5.5 4 4 3-3 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
     <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 13V6a1.5 1.5 0 0 1 3 0v5-6.5a1.5 1.5 0 0 1 3 0V11 6a1.5 1.5 0 0 1 3 0v8c0 4-2.5 7-6.5 7-2.4 0-4-1-5.3-3L3.4 14a1.5 1.5 0 0 1 2.5-1.6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-shape" viewBox="0 0 24 24"><rect x="3" y="3" width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="15.5" cy="15.5" r="5.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-ruler" viewBox="0 0 24 24"><path d="M3 16.5L16.5 3 21 7.5 7.5 21z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M7 12.5l2 2M10 9.5l1.5 1.5M13 6.5l2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18.5a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 17.8 8a4.75 4.75 0 0 1-.3 10.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M15.5 5.2a3.4 3.4 0 0 1 0 6.6M18 14.8c2 .7 3.2 2.4 3.5 5.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-comment" viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 4v-4h0A1.5 1.5 0 0 1 4 14.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
     <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-redo" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></symbol>
@@ -39,6 +44,8 @@
   <header class="home-head">
     <div class="brand"><img src="icons/icon.svg" alt="" width="28" height="28"><h1>InkBoard</h1></div>
     <div class="home-actions">
+      <button id="syncBtn" class="icon sync-btn" type="button" data-state="signedOut" aria-label="OneDrive sync" title="OneDrive sync" hidden><svg><use href="#i-cloud"/></svg></button>
+      <button id="joinBtn" class="btn"><svg><use href="#i-people"/></svg>Join</button>
       <button id="importBtn" class="btn"><svg><use href="#i-import"/></svg>Import</button>
       <button id="newBoard" class="btn primary"><svg><use href="#i-plus"/></svg>New board</button>
     </div>
@@ -52,6 +59,21 @@
 <section id="boardView" hidden>
   <canvas id="canvas" aria-label="Board. Draw with the pen."></canvas>
   <textarea id="editor" class="editor" hidden spellcheck="true" aria-label="Text"></textarea>
+  <div id="pins" class="pins"></div>
+  <div id="thread" class="pop thread" hidden role="dialog" aria-label="Comment thread">
+    <div id="threadList" class="thread-list"></div>
+    <textarea id="threadText" class="input" rows="2" maxlength="2000" placeholder="Add a comment"></textarea>
+    <div class="thread-actions">
+      <button type="button" id="threadResolve" class="btn link">Resolve</button>
+      <span class="spacer"></span>
+      <button type="button" id="threadClose" class="btn">Close</button>
+      <button type="button" id="threadPost" class="btn primary">Post</button>
+    </div>
+  </div>
+  <aside id="commentsPanel" class="pop comments-panel" hidden aria-label="Comments">
+    <div class="panel-head"><h3>Comments</h3><button type="button" id="commentsPanelClose" class="icon" aria-label="Close comments">×</button></div>
+    <div id="commentsList" class="comments-list"></div>
+  </aside>
 
   <div class="bar top-left">
     <button id="back" class="icon" title="All boards" aria-label="All boards"><svg><use href="#i-back"/></svg></button>
@@ -59,8 +81,12 @@
   </div>
 
   <div class="bar top-right">
+    <div id="people" class="people" aria-label="People on this board"></div>
+    <button id="commentsBtn" class="icon" type="button" title="Comments" aria-label="Comments" hidden><svg><use href="#i-comment"/></svg><span id="commentsCount" class="count"></span></button>
+    <button id="shareBtn" class="btn share-btn" type="button" title="Share this board live"><svg><use href="#i-people"/></svg><span id="shareLabel">Share</span></button>
     <button id="undo" class="icon" title="Undo (Ctrl+Z)" aria-label="Undo"><svg><use href="#i-undo"/></svg></button>
     <button id="redo" class="icon" title="Redo (Ctrl+Y)" aria-label="Redo"><svg><use href="#i-redo"/></svg></button>
+    <button id="syncBtn2" class="icon sync-btn" type="button" data-state="signedOut" aria-label="OneDrive sync" title="OneDrive sync" hidden><svg><use href="#i-cloud"/></svg></button>
     <button id="menuBtn" class="icon" title="Board options" aria-label="Board options" aria-haspopup="true"><svg><use href="#i-more"/></svg></button>
   </div>
 
@@ -68,7 +94,7 @@
     <h3>Background</h3>
     <div id="bgColors" class="swatches"></div>
     <div id="bgPattern" class="seg" role="group" aria-label="Background pattern">
-      <button data-p="none">Plain</button><button data-p="dots">Dots</button><button data-p="grid">Grid</button>
+      <button data-p="none">Plain</button><button data-p="dots">Dots</button><button data-p="grid">Grid</button><button data-p="graph">Graph</button><button data-p="axes">Axes</button>
     </div>
     <h3>Pen</h3>
     <label class="row">Smoothing <output id="smoothVal"></output><input id="smooth" type="range" min="0" max="100" step="1"></label>
@@ -82,6 +108,8 @@
 
   <div id="selBar" class="bar sel-bar" hidden>
     <div id="selColors" class="swatches"></div>
+    <button id="selReact" class="icon" title="React" aria-label="Add a reaction"><span class="emoji-icon" aria-hidden="true">☺</span></button>
+    <div id="reactPop" class="react-pop" hidden></div>
     <button id="selDup" class="icon" title="Duplicate (Ctrl+D)" aria-label="Duplicate"><svg><use href="#i-copy"/></svg></button>
     <button id="selDel" class="icon" title="Delete (Del)" aria-label="Delete"><svg><use href="#i-trash"/></svg></button>
   </div>
@@ -91,9 +119,12 @@
     <button data-tool="pen" class="icon pen" title="Pen (P) — select again for colours" aria-label="Pen"><svg><use href="#i-pen"/></svg><i class="dot"></i></button>
     <button data-tool="highlighter" class="icon pen" title="Highlighter (H)" aria-label="Highlighter"><svg><use href="#i-highlighter"/></svg><i class="dot"></i></button>
     <button data-tool="eraser" class="icon" title="Eraser (E)" aria-label="Eraser"><svg><use href="#i-eraser"/></svg></button>
+    <button data-tool="shape" class="icon" title="Shapes (S) — select again for options" aria-label="Shapes"><svg><use href="#i-shape"/></svg></button>
+    <button id="guidesBtn" class="icon" title="Ruler and protractor" aria-label="Ruler and protractor" aria-haspopup="true"><svg><use href="#i-ruler"/></svg></button>
     <span class="sep"></span>
     <button data-tool="note" class="icon" title="Sticky note (N)" aria-label="Sticky note"><svg><use href="#i-note"/></svg></button>
     <button data-tool="text" class="icon" title="Text (T)" aria-label="Text"><svg><use href="#i-text"/></svg></button>
+    <button data-tool="comment" class="icon" title="Comment (C)" aria-label="Comment"><svg><use href="#i-comment"/></svg></button>
     <button id="addImage" class="icon" title="Image" aria-label="Add image"><svg><use href="#i-image"/></svg></button>
     <button data-tool="hand" class="icon" title="Pan (hold Space)" aria-label="Pan"><svg><use href="#i-hand"/></svg></button>
   </nav>
@@ -102,6 +133,18 @@
     <div id="penColors" class="swatches"></div>
     <div id="penSizes" class="sizes" role="group" aria-label="Thickness"></div>
     <div id="penBrushes" class="seg" role="group" aria-label="Ink effect"></div>
+    <button id="inkToShape" class="toggle" aria-pressed="false">Ink to shape</button>
+  </div>
+  <div id="shapePop" class="pop pen-pop" hidden>
+    <div id="shapeKinds" class="kinds" role="group" aria-label="Shape"></div>
+    <div id="shapeColors" class="swatches"></div>
+    <div id="shapeSizes" class="sizes" role="group" aria-label="Line thickness"></div>
+    <button id="shapeFill" class="toggle" aria-pressed="false">Fill</button>
+  </div>
+  <div id="guidesPop" class="pop pen-pop" hidden>
+    <button id="rulerToggle" class="toggle" aria-pressed="false">Ruler</button>
+    <button id="protToggle" class="toggle" aria-pressed="false">Protractor</button>
+    <p class="pop-hint">Move with a finger or the mouse; turn with two fingers or the mouse wheel. Draw along an edge with the pen.</p>
   </div>
   <div id="notePop" class="pop note-pop" hidden><div id="noteColors" class="swatches"></div></div>
 
@@ -116,6 +159,39 @@
 <input id="importFile" type="file" accept=".whiteboard,.inkboard,application/json" multiple hidden>
 <input id="imageFile" type="file" accept="image/*" multiple hidden>
 <div id="drop" class="drop" hidden><p>Drop to import</p></div>
+<dialog id="shareDlg" class="sheet" aria-labelledby="shareTitle">
+  <div class="sheet-body">
+    <h2 id="shareTitle">Share live</h2>
+    <div id="shareStart" class="sheet-body flat">
+      <p>People who have the code can join this board from InkBoard and draw on it with you. They don't need an account. Only give the code to people you want on the board.</p>
+      <label class="field"><span class="label">Your name</span><input id="shareName" class="input" maxlength="30" autocomplete="nickname" placeholder="Shown next to your cursor"></label>
+      <p id="shareErr" class="form-error" hidden></p>
+    </div>
+    <div id="shareLive" class="sheet-body flat" hidden>
+      <p class="hint">On another device, open InkBoard, select <b>Join</b> and enter this code:</p>
+      <output id="shareCode" class="code-big"></output>
+      <div class="link-row"><input id="shareLink" class="input" readonly aria-label="Link to join"><button type="button" id="copyLink" class="btn">Copy link</button></div>
+      <p id="shareState" class="hint"></p>
+      <div id="sharePeople" class="people-list"></div>
+    </div>
+    <div class="sheet-actions">
+      <button type="button" id="shareStop" class="btn link" hidden>Stop sharing</button>
+      <span class="spacer"></span>
+      <button type="button" id="shareClose" class="btn">Close</button>
+      <button type="button" id="shareGo" class="btn primary">Start sharing</button>
+    </div>
+  </div>
+</dialog>
+<dialog id="joinDlg" class="sheet" aria-labelledby="joinTitle">
+  <form id="joinForm" class="sheet-body">
+    <h2 id="joinTitle">Join a shared board</h2>
+    <label class="field"><span class="label">Code</span><input id="joinCode" class="input code-input" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC234" required></label>
+    <label class="field"><span class="label">Your name</span><input id="joinName" class="input" maxlength="30" autocomplete="nickname" required></label>
+    <p class="hint">Everyone on the board sees this name next to your cursor.</p>
+    <p id="joinErr" class="form-error" hidden></p>
+    <div class="sheet-actions"><span class="spacer"></span><button type="button" id="joinCancel" class="btn">Cancel</button><button class="btn primary">Join</button></div>
+  </form>
+</dialog>
 <div id="toast" class="toast" role="status" hidden><span id="toastText"></span><button id="toastAction" hidden></button></div>
 
 <script type="module" src="js/app.js"></script>

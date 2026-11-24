@@ -1,9 +1,10 @@
 // Offline support. Network first, so a new version shows up as soon as it's online;
 // the cached copy is used when there's no connection.
-const CACHE = "inkboard-v1";
+const CACHE = "inkboard-v2";
 const SHELL = [
   "./", "index.html", "styles.css", "manifest.webmanifest", "icons/icon.svg",
   "js/app.js", "js/board.js", "js/ink-core.js", "js/render.js", "js/store.js", "js/inflate.js", "js/whiteboard-import.js",
+  "js/shapes.js", "js/guides.js", "js/merge.js", "js/collab.js", "js/comments.js", "vendor/yjs.mjs",
 ];
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
