@@ -1,0 +1,12 @@
+{
+  "name": "InkBoard",
+  "short_name": "InkBoard",
+  "description": "An infinite whiteboard for pen and touch that opens Microsoft Whiteboard files.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f2f1",
+  "theme_color": "#f3f2f1",
+  "icons": [{ "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }],
+  "file_handlers": [{ "action": "./", "accept": { "application/octet-stream": [".whiteboard"], "application/json": [".inkboard"] } }]
+}

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <title>InkBoard</title>
+  <meta name="description" content="An infinite whiteboard for pen and touch that opens Microsoft Whiteboard files.">
+  <meta name="theme-color" content="#f3f2f1">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-select" viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.6L10 19z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20l1.2-4.6L16.5 4.1a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.6 18.8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14.5 6l3.5 3.5" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-highlighter" viewBox="0 0 24 24"><path d="M9 14l7.5-9.5 3 3L10 15z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 14l1 1-2.5 2.5H4.5L7 14.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M3 21h10" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M8 20h12M3.6 14.6l9.9-9.9a2 2 0 0 1 2.8 0l3 3a2 2 0 0 1 0 2.8L11 19H8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/><path d="M8.5 9.7l5.8 5.8" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M4 4h16v10l-6 6H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 20v-6h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="9.5" r="1.8" fill="currentColor"/><path d="M3.5 18l5.5-5.5 4 4 3-3 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 13V6a1.5 1.5 0 0 1 3 0v5-6.5a1.5 1.5 0 0 1 3 0V11 6a1.5 1.5 0 0 1 3 0v8c0 4-2.5 7-6.5 7-2.4 0-4-1-5.3-3L3.4 14a1.5 1.5 0 0 1 2.5-1.6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5M20 9H10a6 6 0 0 0 0 12h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.8" fill="currentColor"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><circle cx="19" cy="12" r="1.8" fill="currentColor"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-import" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M4 19h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<!-- ===== Boards list ===== -->
+<main id="home">
+  <header class="home-head">
+    <div class="brand"><img src="icons/icon.svg" alt="" width="28" height="28"><h1>InkBoard</h1></div>
+    <div class="home-actions">
+      <button id="importBtn" class="btn"><svg><use href="#i-import"/></svg>Import</button>
+      <button id="newBoard" class="btn primary"><svg><use href="#i-plus"/></svg>New board</button>
+    </div>
+  </header>
+  <p id="storageNote" class="notice" hidden></p>
+  <section id="boards" class="boards" aria-label="Your boards"></section>
+  <p class="hint">Import opens Microsoft Whiteboard files (<b>.whiteboard</b>, found in <b>OneDrive › Whiteboards</b>) and InkBoard copies (<b>.inkboard</b>). You can also drop files here.</p>
+</main>
+
+<!-- ===== One board ===== -->
+<section id="boardView" hidden>
+  <canvas id="canvas" aria-label="Board. Draw with the pen."></canvas>
+  <textarea id="editor" class="editor" hidden spellcheck="true" aria-label="Text"></textarea>
+
+  <div class="bar top-left">
+    <button id="back" class="icon" title="All boards" aria-label="All boards"><svg><use href="#i-back"/></svg></button>
+    <input id="boardName" class="name" aria-label="Board name" maxlength="80">
+  </div>
+
+  <div class="bar top-right">
+    <button id="undo" class="icon" title="Undo (Ctrl+Z)" aria-label="Undo"><svg><use href="#i-undo"/></svg></button>
+    <button id="redo" class="icon" title="Redo (Ctrl+Y)" aria-label="Redo"><svg><use href="#i-redo"/></svg></button>
+    <button id="menuBtn" class="icon" title="Board options" aria-label="Board options" aria-haspopup="true"><svg><use href="#i-more"/></svg></button>
+  </div>
+
+  <div id="menu" class="pop menu" hidden>
+    <h3>Background</h3>
+    <div id="bgColors" class="swatches"></div>
+    <div id="bgPattern" class="seg" role="group" aria-label="Background pattern">
+      <button data-p="none">Plain</button><button data-p="dots">Dots</button><button data-p="grid">Grid</button>
+    </div>
+    <h3>Pen</h3>
+    <label class="row">Smoothing <output id="smoothVal"></output><input id="smooth" type="range" min="0" max="100" step="1"></label>
+    <label class="row">Pressure <output id="curveVal"></output><input id="curve" type="range" min="0" max="100" step="1"></label>
+    <button id="touchInk" class="toggle" aria-pressed="false">Draw with touch</button>
+    <h3>Board</h3>
+    <button id="exportPng" class="item">Export as image (PNG)</button>
+    <button id="exportBoard" class="item">Save a copy (.inkboard)</button>
+    <button id="deleteBoard" class="item danger">Delete board</button>
+  </div>
+
+  <div id="selBar" class="bar sel-bar" hidden>
+    <div id="selColors" class="swatches"></div>
+    <button id="selDup" class="icon" title="Duplicate (Ctrl+D)" aria-label="Duplicate"><svg><use href="#i-copy"/></svg></button>
+    <button id="selDel" class="icon" title="Delete (Del)" aria-label="Delete"><svg><use href="#i-trash"/></svg></button>
+  </div>
+
+  <nav class="bar tools" aria-label="Tools">
+    <button data-tool="select" class="icon" title="Select (V)" aria-label="Select"><svg><use href="#i-select"/></svg></button>
+    <button data-tool="pen" class="icon pen" title="Pen (P) — select again for colours" aria-label="Pen"><svg><use href="#i-pen"/></svg><i class="dot"></i></button>
+    <button data-tool="highlighter" class="icon pen" title="Highlighter (H)" aria-label="Highlighter"><svg><use href="#i-highlighter"/></svg><i class="dot"></i></button>
+    <button data-tool="eraser" class="icon" title="Eraser (E)" aria-label="Eraser"><svg><use href="#i-eraser"/></svg></button>
+    <span class="sep"></span>
+    <button data-tool="note" class="icon" title="Sticky note (N)" aria-label="Sticky note"><svg><use href="#i-note"/></svg></button>
+    <button data-tool="text" class="icon" title="Text (T)" aria-label="Text"><svg><use href="#i-text"/></svg></button>
+    <button id="addImage" class="icon" title="Image" aria-label="Add image"><svg><use href="#i-image"/></svg></button>
+    <button data-tool="hand" class="icon" title="Pan (hold Space)" aria-label="Pan"><svg><use href="#i-hand"/></svg></button>
+  </nav>
+
+  <div id="penPop" class="pop pen-pop" hidden>
+    <div id="penColors" class="swatches"></div>
+    <div id="penSizes" class="sizes" role="group" aria-label="Thickness"></div>
+    <div id="penBrushes" class="seg" role="group" aria-label="Ink effect"></div>
+  </div>
+  <div id="notePop" class="pop note-pop" hidden><div id="noteColors" class="swatches"></div></div>
+
+  <div class="bar zoom">
+    <button id="zoomOut" class="icon" title="Zoom out" aria-label="Zoom out"><svg><use href="#i-minus"/></svg></button>
+    <button id="zoomVal" class="zoom-val" title="Back to 100%">100%</button>
+    <button id="zoomIn" class="icon" title="Zoom in" aria-label="Zoom in"><svg><use href="#i-plus"/></svg></button>
+    <button id="zoomFit" class="icon" title="Show everything" aria-label="Show everything"><svg><use href="#i-fit"/></svg></button>
+  </div>
+</section>
+
+<input id="importFile" type="file" accept=".whiteboard,.inkboard,application/json" multiple hidden>
+<input id="imageFile" type="file" accept="image/*" multiple hidden>
+<div id="drop" class="drop" hidden><p>Drop to import</p></div>
+<div id="toast" class="toast" role="status" hidden><span id="toastText"></span><button id="toastAction" hidden></button></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
